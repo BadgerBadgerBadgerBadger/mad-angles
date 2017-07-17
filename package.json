@@ -1,0 +1,25 @@
+{
+  "name": "phaser-tut",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server/index.js",
+  "dependencies": {
+    "express": "^4.15.3",
+    "gulp": "^3.9.1",
+    "gulp-webserver": "^0.9.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/photonstorm/phaser.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/photonstorm/phaser/issues"
+  },
+  "homepage": "https://github.com/photonstorm/phaser#readme"
+}
