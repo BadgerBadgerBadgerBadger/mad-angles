@@ -52,7 +52,7 @@ function phase() {
     )
     
     const urls = {
-        JIGSAW_IMAGE: 'assets/shadow-mordor-HD-wallpaper.jpg'
+        JIGSAW_IMAGE: '//res.cloudinary.com/scionofbytes-com/image/upload/v1500480728/shadow-of-mordor-poster.jpg'
     }
     
     /*
@@ -155,6 +155,7 @@ function phase() {
 
     function preload() {
         
+        game.load.crossOrigin = "Anonymous"
         game.load.image(entities.JIGSAW_IMAGE, urls.JIGSAW_IMAGE)
         
         /*
