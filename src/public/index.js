@@ -8,7 +8,25 @@ function phase() {
     
 
     const gameOptions = {
-        DELAY: 90,
+        INIT: {
+            DELAY: 90,
+            
+            /*
+                So at first I thought I'd have some sort of variable that stores the total number of pieces still 
+                remaining to rotate and then use a function to keep checking each frame if any are remaining and if
+                there are, then keep the loop going.
+                
+                And I was gonna store this `ROTATING` as a boolean and once the number of pieces left to rotate reached
+                0, I was gonna set this boolean to `false`. I'll leave it as an excercise to whoever the fuck is reading
+                this to figure out why I just ended up not needing two variables. I'm probably insulting someone or the
+                other by doing that. There will be people who are like, "Hey, you calling us dumb, bitch?", and some are
+                gonna be like, "Clearly this young man is full of himself.", and others are gonna be like, "He be trolling!"
+                
+                I don't know, man, it's a weird world out there and you're gonna offend every third person you meet one
+                way or the other.
+            */
+            ROTATING: 0,
+        },
         
         DIMENSION: {
             WIDTH: 1200,
@@ -63,8 +81,28 @@ function phase() {
             we'll have to get a realsplash screen when it becomes a proper game.
         */
         if (gameOptions.DELAY > 0) {
-            gameOptions.DELAY--
+            gameOptions.INIT.DELAY--
             return
+        }
+    }
+    
+    function rotate() {
+        
+        if (gameOptions.INIT.ROTATING) {
+            for (const jigsawPiece of jigSawGroup.children) {
+                
+                if (jigsawPiece.custom.reachedTargetRotation) {
+                    continue
+                }
+                
+                const rotationValue = jigsawPiece.custom.targetRotation / Math.abs(jigsawPiece.custom.targetRotation)
+                jigsawPiece.angle += rotationValue
+                
+                if (jigsawPiece.custom.targetRotation === jigsawPiece.angle) {
+                    jigsawPiece.custom.reachedTargetRotation = true
+                    gameOptions.INIT.ROTATING--
+                }
+            }
         }
     }
     
@@ -93,6 +131,7 @@ function phase() {
         const startingY = (gameOptions.DIMENSION.HEIGHT - (gameOptions.DIMENSION.PIECE_HEIGHT * gameOptions.JIGSAW.DIVISIONS)) / 2
 
         const totalPieces = gameOptions.JIGSAW.DIVISIONS * gameOptions.JIGSAW.DIVISIONS
+        gameOptions.INIT.ROTATING = totalPieces
         
         for (let i = 0; i < totalPieces; i++) {
             
@@ -102,9 +141,15 @@ function phase() {
             const x = (row * gameOptions.DIMENSION.PIECE_WIDTH) + startingX
             const y = (column * gameOptions.DIMENSION.PIECE_HEIGHT) + startingY
             
-            const sprite = game.add.sprite(x, y, entities.JIGSAW_SPRITESHEET, i, jigSawGroup)
-            sprite.body.collideWorldBounds = true
-            sprite.body.bounce.set(0.8)
+            const jigsawPiece = game.add.sprite(x, y, entities.JIGSAW_SPRITESHEET, i, jigSawGroup)
+            
+            /*
+                When they spin at the beginning of the game, just to get them out of whack, they need to be doing that 
+                around their centers and not around some random corner (probably the top left corner).
+            */
+            jigsawPiece.anchor.setTo(0.5, 0.5)
+            jigsawPiece.body.collideWorldBounds = true
+            jigsawPiece.body.bounce.set(0.8)
         }
     }
 
@@ -134,6 +179,17 @@ function phase() {
         }, this)
     }
     
+    function enableCustom() {
+        
+        /*
+            I don't know if Phaser has a way to assign arbitrary values on game objects but since they are just POJOs
+            at the end of the day, I'm just gonna assign the ones I need to hold some specific state a `custom` object.
+        */
+        for (const jigsawPiece of jigSawGroup.children) {
+            jigsawPiece.custom = {}
+        }
+    }
+    
     function enableInput() {
         
         /*
@@ -146,15 +202,24 @@ function phase() {
             jigsawPiece.input.enableDrag(false, true)
         }
     }
+    
+    function decideTargetRotation() {
+        for (const jigsawPiece of jigSawGroup.children) {
+            jigsawPiece.custom.targetRotation = _.sample([45, 90, 135, -45, -90, -135, 180])
+            jigsawPiece.custom.reachedTargetRotation = false
+        }
+    }
 
     function create() {
 
         //  We're going to be using physics, so enable the Arcade Physics system.
         game.physics.startSystem(Phaser.Physics.ARCADE)
         
+        enableCustom()
+        
         // Let's enable input for all the things we need input for.
         enableInput()
-        console.log(game.input.mousePointer)
+        decideTargetRotation()
     }
     
     function moveRandomly() {
@@ -187,14 +252,16 @@ function phase() {
                 And then it's all about picking a random acceleration, scaling it up to 500, and picking a direction 
                 by using previous values.
             */
-            jigsawPiece.body.acceleration.x += Math.random() * 15 * dirX
-            jigsawPiece.body.acceleration.y += Math.random() * 15 * dirY
+            jigsawPiece.body.acceleration.x = Math.random() * 500 * dirX
+            jigsawPiece.body.acceleration.y = Math.random() * 500 * dirY
         }
     }
 
     function update() {
         
         delay()
+        rotate()
+        
         moveRandomly()
         
         // Now let's do input.
