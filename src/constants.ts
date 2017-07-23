@@ -18,7 +18,11 @@ export default {
   },
 
   DIMENSION: {
-    WIDTH: 1200,
+    WIDTH: 900,
     HEIGHT: 700
+  },
+
+  JIGSAW: {
+    DIVISIONS: 3,
   }
 }

@@ -7,18 +7,15 @@ import * as Phaser from 'phaser-ce'
 
 (<any>window).game = (<any>window).game || {}
 
-import GameState from './state/game.ts'
-import Constants from './constants.ts'
+import GameState from './state/Game'
+import Constants from './constants'
 
 class Game extends Phaser.Game {
 
   constructor () {
 
-    const docElement = document.documentElement
-    const width = docElement.clientWidth > Constants.DIMENSION.WIDTH ?
-      Constants.DIMENSION.WIDTH : docElement.clientWidth
-    const height = docElement.clientHeight > Constants.DIMENSION.HEIGHT
-      ? Constants.DIMENSION.HEIGHT : docElement.clientHeight
+    const width = Constants.DIMENSION.WIDTH
+    const height = Constants.DIMENSION.HEIGHT
 
     super(width, height, Phaser.CANVAS, `content`, null)
 
