@@ -113540,6 +113540,7 @@ class JigsawPiece extends phaser_ce_1.Sprite {
         this.body.collideWorldBounds = true;
         this.body.bounce.set(0.8);
         this.initGlow();
+        this.neighbors = {};
     }
     initGlow() {
         this.glow = new phaser_ce_1.Sprite(this.game, this.x, this.y, this.texture, this.frame);
@@ -113607,6 +113608,29 @@ class JigsawPiece extends phaser_ce_1.Sprite {
         */
         this.body.acceleration.x = Math.random() * 500 * dirX;
         this.body.acceleration.y = Math.random() * 500 * dirY;
+    }
+    freeze() {
+        this.sStore(`kineticState`, {
+            velocity: {
+                x: this.body.velocity.x,
+                y: this.body.velocity.y
+            },
+            acceleration: {
+                x: this.body.acceleration.x,
+                y: this.body.acceleration.y
+            }
+        });
+        this.body.velocity.x = 0;
+        this.body.velocity.y = 0;
+        this.body.acceleration.x = 0;
+        this.body.acceleration.y = 0;
+    }
+    unfreeze() {
+        const kineticState = this.gStore(`kineticState`);
+        this.body.velocity.x = kineticState.velocity.x;
+        this.body.velocity.y = kineticState.velocity.y;
+        this.body.acceleration.x = kineticState.acceleration.x;
+        this.body.acceleration.y = kineticState.acceleration.y;
     }
     /**
      * This one's quite simple, really. Both items need to be in the same spatial location. Specifically the second
@@ -113713,7 +113737,8 @@ const gameOptions = {
         },
         KEYS: {
             ROTATE_LEFT: null,
-            ROTATE_RIGHT: null
+            ROTATE_RIGHT: null,
+            FREEZE: null
         }
     }
 };
@@ -113740,6 +113765,7 @@ class GameState extends Phaser.State {
             [entities.JIGSAW_IMAGE]: this.loadJigsawSpriteSheet.bind(this),
             [entities.JIGSAW_SPRITESHEET]: this.loadJigsawPieces.bind(this)
         };
+        this.frozen = false;
     }
     preload() {
         /*
@@ -113780,17 +113806,36 @@ class GameState extends Phaser.State {
         const totalPieces = GameState.computeTotalPieces();
         this.game.debug.text(`Starting X:Y: ${startingX}:${startingY}`, 0, 0, `#ffffff`);
         this.totalRotatingPieces = totalPieces;
+        const grid = [];
         for (let i = 0; i < totalPieces; i++) {
-            const row = i % constants_1.default.JIGSAW.DIVISIONS;
-            const column = (i - row) / constants_1.default.JIGSAW.DIVISIONS;
-            const x = ((row * gameOptions.JIGSAW.PIECE_WIDTH) + startingX) + (gameOptions.JIGSAW.PIECE_WIDTH / 2);
-            const y = ((column * gameOptions.JIGSAW.PIECE_HEIGHT) + startingY) + (gameOptions.JIGSAW.PIECE_HEIGHT / 2);
+            const gridX = i % constants_1.default.JIGSAW.DIVISIONS;
+            const gridY = (i - gridX) / constants_1.default.JIGSAW.DIVISIONS;
+            const x = ((gridX * gameOptions.JIGSAW.PIECE_WIDTH) + startingX) + (gameOptions.JIGSAW.PIECE_WIDTH / 2);
+            const y = ((gridY * gameOptions.JIGSAW.PIECE_HEIGHT) + startingY) + (gameOptions.JIGSAW.PIECE_HEIGHT / 2);
             const jigsawPiece = new JigsawPiece_1.default(this.game, x, y, entities.JIGSAW_SPRITESHEET, i);
-            jigsawPiece.init({ index: i });
+            jigsawPiece.init({ index: 1 });
+            jigsawPiece.sStore(`grid.position`, [gridX, gridY]);
+            grid[gridX] = grid[gridX] || [];
+            grid[gridX][gridY] = jigsawPiece;
             GameState.decideTargetRotation(jigsawPiece);
             this.jigSawGroup.add(jigsawPiece);
             this.world.bringToTop(this.jigSawGroup);
         }
+        this.jigSawGroup.children.forEach((jigsawPiece) => {
+            const [gridX, gridY] = jigsawPiece.gStore(`grid.position`);
+            if (gridY - 1 >= 0) {
+                jigsawPiece.neighbors.top = grid[gridX][gridY - 1];
+            }
+            if (gridX + 1 < constants_1.default.JIGSAW.DIVISIONS) {
+                jigsawPiece.neighbors.right = grid[gridX + 1][gridY];
+            }
+            if (gridY + 1 < constants_1.default.JIGSAW.DIVISIONS) {
+                jigsawPiece.neighbors.bottom = grid[gridX][gridY + 1];
+            }
+            if (gridX - 1 >= 0) {
+                jigsawPiece.neighbors.top = grid[gridX - 1][gridY];
+            }
+        });
     }
     static decideTargetRotation(jigsawPiece) {
         /*
@@ -113820,8 +113865,6 @@ class GameState extends Phaser.State {
     create() {
         //  We're going to be using physics, so enable the Arcade Physics system.
         this.physics.startSystem(Phaser.Physics.ARCADE);
-        gameOptions.INPUT.KEYS.ROTATE_LEFT = this.game.input.keyboard.addKey(Phaser.Keyboard.A);
-        gameOptions.INPUT.KEYS.ROTATE_RIGHT = this.game.input.keyboard.addKey(Phaser.Keyboard.D);
     }
     // ========== UPDATE ==========
     update() {
@@ -113834,6 +113877,7 @@ class GameState extends Phaser.State {
             return;
         }
         this.enableInputIfNotEnabled();
+        this.processInput();
         this.updateJigsawPieces();
     }
     delay() {
@@ -113892,6 +113936,9 @@ class GameState extends Phaser.State {
         if (gameOptions.INIT.INPUT_ENABLED) {
             return;
         }
+        gameOptions.INPUT.KEYS.ROTATE_LEFT = this.game.input.keyboard.addKey(Phaser.Keyboard.A);
+        gameOptions.INPUT.KEYS.ROTATE_RIGHT = this.game.input.keyboard.addKey(Phaser.Keyboard.D);
+        gameOptions.INPUT.KEYS.FREEZE = this.game.input.keyboard.addKey(Phaser.Keyboard.F);
         this.jigSawGroup.children.forEach((jigsawPiece) => {
             jigsawPiece.enableInput(this.selectPiece.bind(this));
         });
@@ -113906,16 +113953,21 @@ class GameState extends Phaser.State {
             if (jigsawPiece === this.selectedPiece) {
                 jigsawPiece.updateGlow();
                 jigsawPiece.dontMove();
-                this.processInput(jigsawPiece);
                 return;
             }
-            jigsawPiece.moveRandomly();
+            if (!this.frozen) {
+                jigsawPiece.moveRandomly();
+            }
         });
     }
-    processInput(selectedPiece) {
-        this.rotateOnInput(selectedPiece);
+    processInput() {
+        this.rotateSelectedPieceOnInput();
+        this.freeze();
     }
-    rotateOnInput(selectedPiece) {
+    rotateSelectedPieceOnInput() {
+        if (!this.selectedPiece) {
+            return;
+        }
         const rotateLeftPressed = gameOptions.INPUT.KEYS.ROTATE_LEFT.downDuration(16);
         const rotateRightPressed = gameOptions.INPUT.KEYS.ROTATE_RIGHT.downDuration(16);
         if (rotateLeftPressed || rotateRightPressed) {
@@ -113927,7 +113979,22 @@ class GameState extends Phaser.State {
             else {
                 desiredAngle = gameOptions.INPUT.ROTATION.RIGHT[currentAngle];
             }
-            selectedPiece.angle = desiredAngle;
+            this.selectedPiece.angle = desiredAngle;
+        }
+    }
+    freeze() {
+        if (gameOptions.INPUT.KEYS.FREEZE.downDuration(16)) {
+            if (this.frozen) {
+                this.jigSawGroup.children.forEach((jigsawPiece) => {
+                    jigsawPiece.unfreeze();
+                });
+            }
+            else {
+                this.jigSawGroup.children.forEach((jigsawPiece) => {
+                    jigsawPiece.freeze();
+                });
+            }
+            this.frozen = !this.frozen;
         }
     }
     selectPiece(jigsawPiece) {
