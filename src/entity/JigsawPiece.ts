@@ -9,11 +9,30 @@ interface JigsawPieceConfig {
   index: number
 }
 
+interface Neighbors {
+  top?: JigsawPiece,
+  right?: JigsawPiece,
+  bottom?: JigsawPiece,
+  left?: JigsawPiece
+}
+
+interface KineticState {
+  velocity: {
+    x: number,
+    y: number
+  },
+  acceleration: {
+    x: number,
+    y: number
+  }
+}
+
 export default class JigsawPiece extends Sprite implements LocalCache {
 
   index: number
   glow: Sprite
   localCache: {}
+  neighbors: Neighbors
 
   init(config: JigsawPieceConfig) {
 
@@ -31,6 +50,7 @@ export default class JigsawPiece extends Sprite implements LocalCache {
     this.body.bounce.set(0.8)
 
     this.initGlow()
+    this.neighbors = {}
   }
 
   initGlow() {
@@ -123,6 +143,38 @@ export default class JigsawPiece extends Sprite implements LocalCache {
     */
     this.body.acceleration.x = Math.random() * 500 * dirX
     this.body.acceleration.y = Math.random() * 500 * dirY
+  }
+
+  freeze() {
+
+    this.sStore(
+      `kineticState`,
+      {
+        velocity: {
+          x: this.body.velocity.x,
+          y: this.body.velocity.y
+        },
+        acceleration: {
+          x: this.body.acceleration.x,
+          y: this.body.acceleration.y
+        }
+      }
+    )
+
+    this.body.velocity.x = 0
+    this.body.velocity.y = 0
+    this.body.acceleration.x = 0
+    this.body.acceleration.y = 0
+  }
+
+  unfreeze() {
+
+    const kineticState = this.gStore(`kineticState`) as KineticState
+
+    this.body.velocity.x = kineticState.velocity.x
+    this.body.velocity.y = kineticState.velocity.y
+    this.body.acceleration.x = kineticState.acceleration.x
+    this.body.acceleration.y = kineticState.acceleration.y
   }
 
   /**

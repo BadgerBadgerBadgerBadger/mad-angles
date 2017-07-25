@@ -1,8 +1,8 @@
 {
-  "name": "PhaserES6Webpack",
+  "name": "MadAngles",
   "version": "1.0.0",
   "description": "",
-  "author": "leandro cabrera <leandcabrera@gmail.com>",
+  "author": "ScionOfBytes <shuvophoenix@gmail.com>",
   "main": "index.js",
   "scripts": {
     "dev": "webpack",
@@ -11,7 +11,7 @@
   },
   "license": "MIT",
   "devDependencies": {
-    "@types/lodash": "^4.14.70",
+    "@types/lodash": "4.14.70",
     "babel-core": "6.24.1",
     "babel-eslint": "7.2.3",
     "babel-loader": "7.0.0",
@@ -32,7 +32,7 @@
     "webpack": "2.6.1"
   },
   "dependencies": {
-    "lodash": "^4.17.4",
+    "lodash": "4.17.4",
     "phaser-ce": "2.8.0"
   }
 }
