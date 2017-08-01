@@ -32,7 +32,6 @@ import JigsawPiece from '../entity/JigsawPiece'
 
 const gameOptions = {
   INIT: {
-    DELAY: Constants.INIT.DELAY,
 
     /*
         So at first I thought I'd have some sort of variable that stores the total number of pieces still
@@ -55,7 +54,7 @@ const gameOptions = {
         long run. Any arbitrary angles will work as long as I limit the rotation of the selected piece to the
         same values.
     */
-    ROTATION_SAMPLE: _.keys(Constants.ROTATION_SAMPLE).map(r => parseInt(r, 10)),
+    ROTATION_SAMPLE: _.keys(Constants.ROTATION.SAMPLE).map(r => parseInt(r, 10)),
     READY: false,
     INPUT_ENABLED: false
   },
@@ -65,16 +64,9 @@ const gameOptions = {
     PIECE_HEIGHT: null
   },
   INPUT: {
-    SELECTED: {
-      /*
-          Should be pretty self-explanatory. The `CURRENT` property points to the piece currently selected and
-          the `GLOW` property points to the glowy effect for the
-      */
-      CURRENT: null
-    },
     ROTATION: {
-      RIGHT: Constants.ROTATION_SAMPLE,
-      LEFT: _.invert(Constants.ROTATION_SAMPLE)
+      RIGHT: Constants.ROTATION.SAMPLE,
+      LEFT: _.invert(Constants.ROTATION.SAMPLE)
     },
     KEYS: {
       ROTATE_LEFT: null,
@@ -146,7 +138,7 @@ export default class GameState extends Phaser.State {
 
       Anyway, github hosts project sites at <username>.github.io/<repo-name> so accessing local resources was
       gonna be a hassle since I couldn't refer to them from the js code and have them work on both dev and prod
-      enviroments. I know I can solve this by simply aligning dev to prod, which is very simple to do, actually,
+      environments. I know I can solve this by simply aligning dev to prod, which is very simple to do, actually,
       but fuck it, I wanna do it this way, coz fuck you! that's why.
     */
     this.load.crossOrigin = 'Anonymous'
@@ -256,8 +248,8 @@ export default class GameState extends Phaser.State {
         that second property to true. I'm guessing a simple boolean check will be much simpler than a comparision
         between the current angle and this target angle to determine if rotation has completed.
     */
-    jigsawPiece.sStore(`targetRotation`, _.sample(gameOptions.INIT.ROTATION_SAMPLE))
-    jigsawPiece.sStore(`reachedTargetRotation`, false)
+    jigsawPiece.sStore(`rotationTarget`, _.sample(gameOptions.INIT.ROTATION_SAMPLE))
+    jigsawPiece.sStore(`rotated`, false)
   }
 
   static computeStartingLocationOfImage() {
@@ -281,17 +273,42 @@ export default class GameState extends Phaser.State {
 
     //  We're going to be using physics, so enable the Arcade Physics system.
     this.physics.startSystem(Phaser.Physics.ARCADE)
+
+    /*
+      I was initially doing this in a terrible way: by hand. I was maintaining variables for keeping counts of the delay,
+      decrementing the delay by hand, rotating by hand and just...DAMN, I was doing a lot of nonsense. This is much
+      simpler and makes more sense.
+
+      We tween the delay down to 0, and then add rotation tweens to the jigsawPieces.
+     */
+    this.game.add.tween(this.startDelay).to(0, Constants.INIT.DELAY).start()
+      .onComplete.add(() => this.addRotationTweensToJigsawPieces())
+  }
+
+  addRotationTweensToJigsawPieces() {
+
+    /*
+      Here's what we're doing: go through all the pieces and tween them from their current angle to the rotation decided
+      for them, previously. Once that's done, we set their states to be rotated and decrement the rotation counter.
+     */
+    for (let i = this.jigSawGroup.children.length; i--;) {
+
+      const jigsawPiece: JigsawPiece = this.jigSawGroup.children[i] as JigsawPiece
+      const targetRotation = jigsawPiece.gStore(`rotationTarget`) as number
+
+      this.game.add.tween(jigsawPiece).to({angle: targetRotation}, Constants.ROTATION.DURATION)
+        .start()
+        .onComplete.add(() => {
+          jigsawPiece.markRotationTargetAchieved()
+          this.totalRotatingPieces--
+        })
+    }
   }
 
   // ========== UPDATE ==========
 
   update() {
 
-    if (this.delay()) {
-      return
-    }
-
-    this.getIntoAngle()
     this.checkReadyState()
 
     if (!this.isReady()) {
@@ -302,54 +319,6 @@ export default class GameState extends Phaser.State {
 
     this.processInput()
     this.updateJigsawPieces()
-  }
-
-  delay() {
-
-    /*
-        At a framerate of 60, this gives 1.5 seconds of delay. Think of it as a sort of splash screen. Of course,
-        we'll have to get a realsplash screen when it becomes a proper this.
-    */
-    if (this.startDelay > 0) {
-      this.startDelay--
-      return true
-    }
-
-    return false
-  }
-
-  getIntoAngle() {
-
-    if (!this.totalRotatingPieces) {
-      return
-    }
-
-    this.jigSawGroup.children.forEach((jigsawPiece: JigsawPiece) => {
-
-      if (jigsawPiece.gStore(`reachedTargetRotation`)) {
-        return
-      }
-
-      /*
-          Fun bug. Initially the list of target angles didn't have 0 in them but then I introduced it. So now some
-          pieces are gonna be 0 and not rotate at all. But since I'd not changed the computation, a 0/0 was
-          leading to the buggy behavior one can expect when one tries to do math that goes against the
-          fundamental nature of the Universe.
-
-          Sure we could check for a 0/0 specifically and take some action in that case but why do that when we can
-          write code that doesn't have a special condition check and is thus, in
-          [good taste](https://goo.gl/gf3WCD).
-      */
-      if (jigsawPiece.reachedTargetRotation()) {
-
-        jigsawPiece.markTargetRotationAchieved()
-        this.totalRotatingPieces--
-
-        return
-      }
-
-      jigsawPiece.rotate()
-    })
   }
 
   checkReadyState() {
@@ -399,7 +368,6 @@ export default class GameState extends Phaser.State {
 
       if (jigsawPiece === this.selectedPiece) {
 
-        jigsawPiece.updateGlow()
         jigsawPiece.dontMove()
 
         return

@@ -1,7 +1,7 @@
 'use strict'
 
 import * as _ from 'lodash'
-import {Sprite} from 'phaser-ce'
+import {Sprite, Graphics} from 'phaser-ce'
 
 import LocalCache from './LocalCache'
 
@@ -55,44 +55,39 @@ export default class JigsawPiece extends Sprite implements LocalCache {
 
   initGlow() {
 
-    this.glow = new Sprite(this.game, this.x, this.y, this.texture, this.frame)
-
-    this.glow.tint = 0xffff00
-    this.glow.alpha = 0.0
-    this.glow.scale.setTo(1.1, 1.1)
-
-    this.game.add.existing(this.glow)
-  }
-
-  reachedTargetRotation() {
-
-    if (this.gStore(`reachedTargetRotation`)) {
-      return true
-    }
-
-    const trulyReached = this.gStore(`targetRotation`) === parseInt(this.angle.toString(), 10)
-
-    if (trulyReached) {
-      this.sStore(`reachedTargetRotation`, true)
-    }
-
-    return trulyReached
-  }
-
-  markTargetRotationAchieved() {
-    this.sStore(`targetRotation`, true)
-  }
-
-  rotate() {
-
-    const targetRotation = this.gStore(`targetRotation`) as number
-    const absoluteTargetRotation = Math.abs(targetRotation)
-
     /*
-      Normalizing the target rotation value, giving either a +1 or -1. And then we add that to the existing angle to
-      get rotation.
+      Previously, I was using a copy of this piece's sprite, tinting it yellow and then setting an opacity of 0.something
+      when I needed it visible, otherwise, 0. Safe to say, this was a terrible idea. As it wasn't part of the main group
+      it was always behind every other piece (although this piece was on top) and you can imagine how weird that looked.
+
+      I even tried adding the piece as a child (and later adding a whole rectangle graphic as a child), but children are
+      always drawn after the parent and hence on top.
+
+      So the solution is to go with an outline. It's just a line drawn all around the sprite with thickness that would
+      simulate the look of an outline.
+
+      Converting it into a sprite since graphic objects are expensive to manage.
      */
-    this.angle += (targetRotation / absoluteTargetRotation)
+    const outlineGraphic = new Graphics(this.game, 0, 0)
+      .lineStyle(10,0xffff00)
+      .moveTo(-5, -5)
+      .lineTo(this.width + 5,  -5)
+      .lineTo(this.width + 5, this.height + 5)
+      .lineTo(- 5, this.height + 5)
+      .lineTo(-5, -5)
+
+    this.glow = new Sprite(this.game, 0, 0, outlineGraphic.generateTexture())
+
+    this.glow.visible = false
+
+    this.glow.anchor.x = 0.5
+    this.glow.anchor.y = 0.5
+
+    this.addChild(this.glow)
+  }
+
+  markRotationTargetAchieved() {
+    this.sStore(`rotationTarget`, true)
   }
 
   enableInput(onClickListener) {
@@ -109,15 +104,16 @@ export default class JigsawPiece extends Sprite implements LocalCache {
   }
 
   deglow() {
-    this.glow.alpha = 0.0
+    this.glow.visible = false
   }
 
   reglow() {
-    this.glow.alpha = 0.6
-  }
-
-  updateGlow() {
-    JigsawPiece.copySpatialConfig(this.glow, this)
+    /*
+      This works much better than changing opacity. It probably changes opacity. It probably just doesn't draw the sprite
+      when this is set which is presumably much cheaper to achieve than drawing a sprite with some opacity, even if that
+      is 0.
+     */
+    this.glow.visible = true
   }
 
   dontMove() {
@@ -175,25 +171,6 @@ export default class JigsawPiece extends Sprite implements LocalCache {
     this.body.velocity.y = kineticState.velocity.y
     this.body.acceleration.x = kineticState.acceleration.x
     this.body.acceleration.y = kineticState.acceleration.y
-  }
-
-  /**
-   * This one's quite simple, really. Both items need to be in the same spatial location. Specifically the second
-   * sprite wants to be where the first it and shadow it exactly. So their anchors are synchronized, followed by their
-   * locations and finally their rotation.
-   *
-   * @param {Sprite} first
-   * @param {Sprite} second
-   */
-  static copySpatialConfig(first: Sprite, second: Sprite) {
-
-    first.anchor.x = second.anchor.x
-    first.anchor.y = second.anchor.y
-
-    first.x = second.x
-    first.y = second.y
-
-    first.angle = second.angle
   }
 
   gStore(path) {
