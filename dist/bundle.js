@@ -108593,17 +108593,20 @@ if(new $WeakMap().set((Object.freeze || Object)(tmp), 7).get(tmp) != 7){
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = {
     INIT: {
-        DELAY: 90
+        DELAY: 1000 //ms
     },
-    ROTATION_SAMPLE: {
-        0: 45,
-        45: 90,
-        90: 135,
-        135: 179,
-        179: -135,
-        '-135': -90,
-        '-90': -45,
-        '-45': 0
+    ROTATION: {
+        DURATION: 1000,
+        SAMPLE: {
+            0: 45,
+            45: 90,
+            90: 135,
+            135: 179,
+            179: -135,
+            '-135': -90,
+            '-90': -45,
+            '-45': 0
+        }
     },
     DIMENSION: {
         WIDTH: 900,
@@ -113543,33 +113546,34 @@ class JigsawPiece extends phaser_ce_1.Sprite {
         this.neighbors = {};
     }
     initGlow() {
-        this.glow = new phaser_ce_1.Sprite(this.game, this.x, this.y, this.texture, this.frame);
-        this.glow.tint = 0xffff00;
-        this.glow.alpha = 0.0;
-        this.glow.scale.setTo(1.1, 1.1);
-        this.game.add.existing(this.glow);
-    }
-    reachedTargetRotation() {
-        if (this.gStore(`reachedTargetRotation`)) {
-            return true;
-        }
-        const trulyReached = this.gStore(`targetRotation`) === parseInt(this.angle.toString(), 10);
-        if (trulyReached) {
-            this.sStore(`reachedTargetRotation`, true);
-        }
-        return trulyReached;
-    }
-    markTargetRotationAchieved() {
-        this.sStore(`targetRotation`, true);
-    }
-    rotate() {
-        const targetRotation = this.gStore(`targetRotation`);
-        const absoluteTargetRotation = Math.abs(targetRotation);
         /*
-          Normalizing the target rotation value, giving either a +1 or -1. And then we add that to the existing angle to
-          get rotation.
+          Previously, I was using a copy of this piece's sprite, tinting it yellow and then setting an opacity of 0.something
+          when I needed it visible, otherwise, 0. Safe to say, this was a terrible idea. As it wasn't part of the main group
+          it was always behind every other piece (although this piece was on top) and you can imagine how weird that looked.
+    
+          I even tried adding the piece as a child (and later adding a whole rectangle graphic as a child), but children are
+          always drawn after the parent and hence on top.
+    
+          So the solution is to go with an outline. It's just a line drawn all around the sprite with thickness that would
+          simulate the look of an outline.
+    
+          Converting it into a sprite since graphic objects are expensive to manage.
          */
-        this.angle += (targetRotation / absoluteTargetRotation);
+        const outlineGraphic = new phaser_ce_1.Graphics(this.game, 0, 0)
+            .lineStyle(10, 0xffff00)
+            .moveTo(-5, -5)
+            .lineTo(this.width + 5, -5)
+            .lineTo(this.width + 5, this.height + 5)
+            .lineTo(-5, this.height + 5)
+            .lineTo(-5, -5);
+        this.glow = new phaser_ce_1.Sprite(this.game, 0, 0, outlineGraphic.generateTexture());
+        this.glow.visible = false;
+        this.glow.anchor.x = 0.5;
+        this.glow.anchor.y = 0.5;
+        this.addChild(this.glow);
+    }
+    markRotationTargetAchieved() {
+        this.sStore(`rotationTarget`, true);
     }
     enableInput(onClickListener) {
         /*
@@ -113582,13 +113586,15 @@ class JigsawPiece extends phaser_ce_1.Sprite {
         this.events.onInputDown.add(onClickListener, this);
     }
     deglow() {
-        this.glow.alpha = 0.0;
+        this.glow.visible = false;
     }
     reglow() {
-        this.glow.alpha = 0.6;
-    }
-    updateGlow() {
-        JigsawPiece.copySpatialConfig(this.glow, this);
+        /*
+          This works much better than changing opacity. It probably changes opacity. It probably just doesn't draw the sprite
+          when this is set which is presumably much cheaper to achieve than drawing a sprite with some opacity, even if that
+          is 0.
+         */
+        this.glow.visible = true;
     }
     dontMove() {
         this.body.acceleration.x = 0;
@@ -113631,21 +113637,6 @@ class JigsawPiece extends phaser_ce_1.Sprite {
         this.body.velocity.y = kineticState.velocity.y;
         this.body.acceleration.x = kineticState.acceleration.x;
         this.body.acceleration.y = kineticState.acceleration.y;
-    }
-    /**
-     * This one's quite simple, really. Both items need to be in the same spatial location. Specifically the second
-     * sprite wants to be where the first it and shadow it exactly. So their anchors are synchronized, followed by their
-     * locations and finally their rotation.
-     *
-     * @param {Sprite} first
-     * @param {Sprite} second
-     */
-    static copySpatialConfig(first, second) {
-        first.anchor.x = second.anchor.x;
-        first.anchor.y = second.anchor.y;
-        first.x = second.x;
-        first.y = second.y;
-        first.angle = second.angle;
     }
     gStore(path) {
         return _.get(this.localCache, path);
@@ -113693,7 +113684,6 @@ const JigsawPiece_1 = __webpack_require__(308);
 */
 const gameOptions = {
     INIT: {
-        DELAY: constants_1.default.INIT.DELAY,
         /*
             So at first I thought I'd have some sort of variable that stores the total number of pieces still
             remaining to rotate and then use a function to keep checking each frame if any are remaining and if
@@ -113715,7 +113705,7 @@ const gameOptions = {
             long run. Any arbitrary angles will work as long as I limit the rotation of the selected piece to the
             same values.
         */
-        ROTATION_SAMPLE: _.keys(constants_1.default.ROTATION_SAMPLE).map(r => parseInt(r, 10)),
+        ROTATION_SAMPLE: _.keys(constants_1.default.ROTATION.SAMPLE).map(r => parseInt(r, 10)),
         READY: false,
         INPUT_ENABLED: false
     },
@@ -113724,16 +113714,9 @@ const gameOptions = {
         PIECE_HEIGHT: null
     },
     INPUT: {
-        SELECTED: {
-            /*
-                Should be pretty self-explanatory. The `CURRENT` property points to the piece currently selected and
-                the `GLOW` property points to the glowy effect for the
-            */
-            CURRENT: null
-        },
         ROTATION: {
-            RIGHT: constants_1.default.ROTATION_SAMPLE,
-            LEFT: _.invert(constants_1.default.ROTATION_SAMPLE)
+            RIGHT: constants_1.default.ROTATION.SAMPLE,
+            LEFT: _.invert(constants_1.default.ROTATION.SAMPLE)
         },
         KEYS: {
             ROTATE_LEFT: null,
@@ -113775,7 +113758,7 @@ class GameState extends Phaser.State {
     
           Anyway, github hosts project sites at <username>.github.io/<repo-name> so accessing local resources was
           gonna be a hassle since I couldn't refer to them from the js code and have them work on both dev and prod
-          enviroments. I know I can solve this by simply aligning dev to prod, which is very simple to do, actually,
+          environments. I know I can solve this by simply aligning dev to prod, which is very simple to do, actually,
           but fuck it, I wanna do it this way, coz fuck you! that's why.
         */
         this.load.crossOrigin = 'Anonymous';
@@ -113847,8 +113830,8 @@ class GameState extends Phaser.State {
             that second property to true. I'm guessing a simple boolean check will be much simpler than a comparision
             between the current angle and this target angle to determine if rotation has completed.
         */
-        jigsawPiece.sStore(`targetRotation`, _.sample(gameOptions.INIT.ROTATION_SAMPLE));
-        jigsawPiece.sStore(`reachedTargetRotation`, false);
+        jigsawPiece.sStore(`rotationTarget`, _.sample(gameOptions.INIT.ROTATION_SAMPLE));
+        jigsawPiece.sStore(`rotated`, false);
     }
     static computeStartingLocationOfImage() {
         const startingX = (constants_1.default.DIMENSION.WIDTH - (gameOptions.JIGSAW.PIECE_WIDTH * constants_1.default.JIGSAW.DIVISIONS)) / 2;
@@ -113865,13 +113848,34 @@ class GameState extends Phaser.State {
     create() {
         //  We're going to be using physics, so enable the Arcade Physics system.
         this.physics.startSystem(Phaser.Physics.ARCADE);
+        /*
+          I was initially doing this in a terrible way: by hand. I was maintaining variables for keeping counts of the delay,
+          decrementing the delay by hand, rotating by hand and just...DAMN, I was doing a lot of nonsense. This is much
+          simpler and makes more sense.
+    
+          We tween the delay down to 0, and then add rotation tweens to the jigsawPieces.
+         */
+        this.game.add.tween(this.startDelay).to(0, constants_1.default.INIT.DELAY).start()
+            .onComplete.add(() => this.addRotationTweensToJigsawPieces());
+    }
+    addRotationTweensToJigsawPieces() {
+        /*
+          Here's what we're doing: go through all the pieces and tween them from their current angle to the rotation decided
+          for them, previously. Once that's done, we set their states to be rotated and decrement the rotation counter.
+         */
+        for (let i = this.jigSawGroup.children.length; i--;) {
+            const jigsawPiece = this.jigSawGroup.children[i];
+            const targetRotation = jigsawPiece.gStore(`rotationTarget`);
+            this.game.add.tween(jigsawPiece).to({ angle: targetRotation }, constants_1.default.ROTATION.DURATION)
+                .start()
+                .onComplete.add(() => {
+                jigsawPiece.markRotationTargetAchieved();
+                this.totalRotatingPieces--;
+            });
+        }
     }
     // ========== UPDATE ==========
     update() {
-        if (this.delay()) {
-            return;
-        }
-        this.getIntoAngle();
         this.checkReadyState();
         if (!this.isReady()) {
             return;
@@ -113879,43 +113883,6 @@ class GameState extends Phaser.State {
         this.enableInputIfNotEnabled();
         this.processInput();
         this.updateJigsawPieces();
-    }
-    delay() {
-        /*
-            At a framerate of 60, this gives 1.5 seconds of delay. Think of it as a sort of splash screen. Of course,
-            we'll have to get a realsplash screen when it becomes a proper this.
-        */
-        if (this.startDelay > 0) {
-            this.startDelay--;
-            return true;
-        }
-        return false;
-    }
-    getIntoAngle() {
-        if (!this.totalRotatingPieces) {
-            return;
-        }
-        this.jigSawGroup.children.forEach((jigsawPiece) => {
-            if (jigsawPiece.gStore(`reachedTargetRotation`)) {
-                return;
-            }
-            /*
-                Fun bug. Initially the list of target angles didn't have 0 in them but then I introduced it. So now some
-                pieces are gonna be 0 and not rotate at all. But since I'd not changed the computation, a 0/0 was
-                leading to the buggy behavior one can expect when one tries to do math that goes against the
-                fundamental nature of the Universe.
-      
-                Sure we could check for a 0/0 specifically and take some action in that case but why do that when we can
-                write code that doesn't have a special condition check and is thus, in
-                [good taste](https://goo.gl/gf3WCD).
-            */
-            if (jigsawPiece.reachedTargetRotation()) {
-                jigsawPiece.markTargetRotationAchieved();
-                this.totalRotatingPieces--;
-                return;
-            }
-            jigsawPiece.rotate();
-        });
     }
     checkReadyState() {
         if (this.isReady()) {
@@ -113951,7 +113918,6 @@ class GameState extends Phaser.State {
         */
         this.jigSawGroup.children.forEach((jigsawPiece) => {
             if (jigsawPiece === this.selectedPiece) {
-                jigsawPiece.updateGlow();
                 jigsawPiece.dontMove();
                 return;
             }
